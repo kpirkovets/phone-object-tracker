@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Real-Time Object Tracking</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+  <style>
+    body { margin: 0; display: flex; flex-direction: column; align-items: center; background: #111; color: white; }
+    video, canvas { width: 100%; max-width: 480px; border-radius: 12px; }
+    #status { margin: 10px; font-size: 1rem; }
+  </style>
+</head>
+<body>
+  <h2>📷 Real-Time Object Tracking</h2>
+  <p id="status">Loading model...</p>
+  <video id="video" autoplay playsinline></video>
+  <canvas id="canvas"></canvas>
+
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const statusText = document.getElementById('status');
+
+    async function initCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        video.srcObject = stream;
+        return new Promise(resolve => {
+          video.onloadedmetadata = () => {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            resolve();
+          };
+        });
+      } catch (err) {
+        alert('Camera access denied or unavailable.');
+      }
+    }
+
+    async function main() {
+      await initCamera();
+      statusText.textContent = "Loading object detection model...";
+      const model = await cocoSsd.load();
+      statusText.textContent = "Model loaded. Detecting objects...";
+      
+      async function detectFrame() {
+        const predictions = await model.detect(video);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        predictions.forEach(pred => {
+          ctx.beginPath();
+          ctx.rect(...pred.bbox);
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = "#00FF00";
+          ctx.fillStyle = "#00FF00";
+          ctx.stroke();
+          ctx.fillText(`${pred.class} (${Math.round(pred.score*100)}%)`, pred.bbox[0], pred.bbox[1] > 10 ? pred.bbox[1] - 5 : 10);
+        });
+
+        requestAnimationFrame(detectFrame);
+      }
+      
+      detectFrame();
+    }
+
+    main();
+  </script>
+</body>
+</html>
