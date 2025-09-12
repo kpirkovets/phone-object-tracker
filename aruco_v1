@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ArUco Marker Tracking</title>
+  <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+  <style>
+    body { margin: 0; display: flex; flex-direction: column; align-items: center; background: #111; color: white; }
+    video, canvas { width: 100%; max-width: 480px; border-radius: 12px; }
+    #status { margin: 10px; font-size: 1rem; }
+  </style>
+</head>
+<body>
+  <h2>📷 ArUco Marker Tracking</h2>
+  <p id="status">Loading OpenCV...</p>
+  <video id="video" autoplay playsinline></video>
+  <canvas id="canvas"></canvas>
+
+  <script>
+    let video = document.getElementById('video');
+    let canvas = document.getElementById('canvas');
+    let ctx = canvas.getContext('2d');
+    let statusText = document.getElementById('status');
+
+    function onOpenCvReady() {
+      statusText.textContent = "OpenCV.js Loaded!";
+      initCamera();
+    }
+
+    async function initCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      video.srcObject = stream;
+      video.onloadedmetadata = () => {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        startDetection();
+      };
+    }
+
+    function startDetection() {
+      let src = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC4);
+      let gray = new cv.Mat();
+      let dictionary = new cv.aruco.getPredefinedDictionary(cv.aruco.DICT_4X4_50);
+      let parameters = new cv.aruco.DetectorParameters();
+      let detector = new cv.aruco.ArucoDetector(dictionary, parameters);
+
+      function processFrame() {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        src.data.set(imageData.data);
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+        let corners = new cv.MatVector();
+        let ids = new cv.Mat();
+        detector.detectMarkers(gray, corners, ids);
+
+        if (!ids.empty()) {
+          cv.aruco.drawDetectedMarkers(src, corners, ids);
+
+          // Example: If you know your camera matrix & distCoeffs
+          // let rvecs = new cv.Mat(); let tvecs = new cv.Mat();
+          // cv.aruco.estimatePoseSingleMarkers(corners, markerLength, cameraMatrix, distCoeffs, rvecs, tvecs);
+          // You can then use rvecs/tvecs to get 3D coordinates
+        }
+
+        cv.imshow(canvas, src);
+        requestAnimationFrame(processFrame);
+      }
+
+      requestAnimationFrame(processFrame);
+    }
+  </script>
+</body>
+</html>
