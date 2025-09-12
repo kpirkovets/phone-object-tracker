@@ -1,11 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Real-Time Object Tracking</title>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ArUco Marker Tracking</title>
+  <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
   <style>
     body { margin: 0; display: flex; flex-direction: column; align-items: center; background: #111; color: white; }
     video, canvas { width: 100%; max-width: 480px; border-radius: 12px; }
@@ -13,60 +12,65 @@
   </style>
 </head>
 <body>
-  <h2>📷 Real-Time Object Tracking</h2>
-  <p id="status">Loading model...</p>
+  <h2>📷 ArUco Marker Tracking</h2>
+  <p id="status">Loading OpenCV...</p>
   <video id="video" autoplay playsinline></video>
   <canvas id="canvas"></canvas>
 
   <script>
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const statusText = document.getElementById('status');
+    let video = document.getElementById('video');
+    let canvas = document.getElementById('canvas');
+    let ctx = canvas.getContext('2d');
+    let statusText = document.getElementById('status');
+
+    function onOpenCvReady() {
+      statusText.textContent = "OpenCV.js Loaded!";
+      initCamera();
+    }
 
     async function initCamera() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-        video.srcObject = stream;
-        return new Promise(resolve => {
-          video.onloadedmetadata = () => {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            resolve();
-          };
-        });
-      } catch (err) {
-        alert('Camera access denied or unavailable.');
-      }
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      video.srcObject = stream;
+      video.onloadedmetadata = () => {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        startDetection();
+      };
     }
 
-    async function main() {
-      await initCamera();
-      statusText.textContent = "Loading object detection model...";
-      const model = await cocoSsd.load();
-      statusText.textContent = "Model loaded. Detecting objects...";
-      
-      async function detectFrame() {
-        const predictions = await model.detect(video);
+    function startDetection() {
+      let src = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC4);
+      let gray = new cv.Mat();
+      let dictionary = new cv.aruco.getPredefinedDictionary(cv.aruco.DICT_4X4_50);
+      let parameters = new cv.aruco.DetectorParameters();
+      let detector = new cv.aruco.ArucoDetector(dictionary, parameters);
+
+      function processFrame() {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        
-        predictions.forEach(pred => {
-          ctx.beginPath();
-          ctx.rect(...pred.bbox);
-          ctx.lineWidth = 2;
-          ctx.strokeStyle = "#00FF00";
-          ctx.fillStyle = "#00FF00";
-          ctx.stroke();
-          ctx.fillText(`${pred.class} (${Math.round(pred.score*100)}%)`, pred.bbox[0], pred.bbox[1] > 10 ? pred.bbox[1] - 5 : 10);
-        });
+        let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        src.data.set(imageData.data);
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
 
-        requestAnimationFrame(detectFrame);
+        let corners = new cv.MatVector();
+        let ids = new cv.Mat();
+        detector.detectMarkers(gray, corners, ids);
+
+        if (!ids.empty()) {
+          cv.aruco.drawDetectedMarkers(src, corners, ids);
+
+          // Example: If you know your camera matrix & distCoeffs
+          // let rvecs = new cv.Mat(); let tvecs = new cv.Mat();
+          // cv.aruco.estimatePoseSingleMarkers(corners, markerLength, cameraMatrix, distCoeffs, rvecs, tvecs);
+          // You can then use rvecs/tvecs to get 3D coordinates
+        }
+
+        cv.imshow(canvas, src);
+        requestAnimationFrame(processFrame);
       }
-      
-      detectFrame();
-    }
 
-    main();
+      requestAnimationFrame(processFrame);
+    }
   </script>
 </body>
 </html>
+
