@@ -1,4 +1,4 @@
-
+<!-- 
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -147,40 +147,41 @@
     })();
   </script>
 </body>
-</html>
+</html> -->
 
-
-<!-- 
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>YOLO Duck Tracker</title>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js"></script>
+  <title>Green & Orange Duck Tracker</title>
   <style>
     body { margin:0; background:#111; color:#fff; font-family:sans-serif; text-align:center; }
     canvas { width:100%; max-width:480px; border-radius:12px; margin:10px 0; }
-    #counts { font-size:1rem; margin-top:5px; }
+    #coords { font-size:1rem; margin-top:5px; }
   </style>
 </head>
 <body>
-  <h2>🦆 YOLO Duck Tracker</h2>
+  <h2>🦆 Green & Orange Duck Tracker</h2>
   <canvas id="canvas"></canvas>
-  <p id="counts">Green Ducks: – | Orange Ducks: –</p>
+  <p id="coords">Green Ducks: – | Orange Ducks: –</p>
 
   <script>
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const countsText = document.getElementById('counts');
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const coordsText = document.getElementById("coords");
 
-    const video = document.createElement('video');
+    const video = document.createElement("video");
     video.autoplay = true;
     video.playsInline = true;
-    video.style.display = 'none';
+    video.style.display = "none";
     document.body.appendChild(video);
 
-    let model;
+    // Offscreen canvas for downscaled detection
+    const smallCanvas = document.createElement("canvas");
+    const smallCtx = smallCanvas.getContext("2d");
+    smallCanvas.width = 160;
+    smallCanvas.height = 120;
 
     async function initCamera() {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
@@ -194,58 +195,116 @@
       });
     }
 
-    async function loadModel() {
-      // Replace with your hosted YOLOv8 TFJS model URL
-      model = await tf.loadGraphModel('https://your-server.com/model/model.json');
-      console.log('Model loaded!');
+    function rgbToHsv(r, g, b) {
+      r /= 255; g /= 255; b /= 255;
+      const max = Math.max(r,g,b), min = Math.min(r,g,b);
+      let h,s,v = max;
+      const d = max - min;
+      s = max === 0 ? 0 : d/max;
+      if(max === min) h = 0;
+      else {
+        switch(max){
+          case r: h = ((g-b)/d + (g<b?6:0)); break;
+          case g: h = ((b-r)/d +2); break;
+          case b: h = ((r-g)/d +4); break;
+        }
+        h /= 6;
+      }
+      return [h*180, s*255, v*255];
     }
 
-    async function detectFrame() {
-      tf.engine().startScope();
-      const inputTensor = tf.browser.fromPixels(video).resizeBilinear([640,640]).div(255.0).expandDims(0);
-      const predictions = await model.executeAsync(inputTensor);
-      
-      // predictions processing depends on exported model format
-      // usually: boxes, scores, class indices
-      // for example (pseudo-code):
-      // const boxes = predictions[0].arraySync();
-      // const scores = predictions[1].arraySync();
-      // const classes = predictions[2].arraySync();
-
-      // Example placeholder code:
-      const greenDucks = []; // fill with predictions where class == 'green_duck'
-      const orangeDucks = []; // fill with predictions where class == 'orange_duck'
-
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      // Draw green boxes
-      greenDucks.forEach(box => {
-        ctx.strokeStyle = '#00FF00';
-        ctx.lineWidth = 3;
-        ctx.strokeRect(box[0], box[1], box[2]-box[0], box[3]-box[1]);
-      });
-
-      // Draw orange boxes
-      orangeDucks.forEach(box => {
-        ctx.strokeStyle = '#FFA500';
-        ctx.lineWidth = 3;
-        ctx.strokeRect(box[0], box[1], box[2]-box[0], box[3]-box[1]);
-      });
-
-      countsText.textContent = `Green Ducks: ${greenDucks.length} | Orange Ducks: ${orangeDucks.length}`;
-
-      tf.engine().endScope();
-      requestAnimationFrame(detectFrame);
+    function inRange(h,s,v, lower, upper) {
+      return h>=lower[0] && h<=upper[0] &&
+             s>=lower[1] && s<=upper[1] &&
+             v>=lower[2] && v<=upper[2];
     }
 
-    (async () => {
+    function detectDucks() {
+      // Draw downscaled frame
+      smallCtx.drawImage(video, 0, 0, smallCanvas.width, smallCanvas.height);
+      const frame = smallCtx.getImageData(0,0,smallCanvas.width, smallCanvas.height);
+      const data = frame.data;
+
+      const greenDucks=[], orangeDucks=[];
+      const visited = new Uint8Array(smallCanvas.width*smallCanvas.height);
+
+      function floodFill(sx,sy){
+        let queue=[[sx,sy]], sumX=0,sumY=0,count=0, colorType=null;
+        while(queue.length>0){
+          let [x,y] = queue.pop();
+          if(x<0||y<0||x>=smallCanvas.width||y>=smallCanvas.height) continue;
+          let idx = y*smallCanvas.width + x;
+          if(visited[idx]) continue;
+
+          const i = idx*4;
+          const r = data[i], g = data[i+1], b = data[i+2];
+          const [h,s,v] = rgbToHsv(r,g,b);
+
+          const isGreen = inRange(h,s,v,[35,100,100],[85,255,255]);
+          const isOrange = inRange(h,s,v,[5,150,150],[25,255,255]);
+
+          if(isGreen || isOrange){
+            visited[idx]=1;
+            sumX += x;
+            sumY += y;
+            count++;
+            if(!colorType) colorType = isGreen?"green":"orange";
+
+            queue.push([x+1,y]);
+            queue.push([x-1,y]);
+            queue.push([x,y+1]);
+            queue.push([x,y-1]);
+          }
+        }
+        if(count>10){ // smaller threshold due to small canvas
+          const blob={x:sumX/count, y:sumY/count};
+          if(colorType==="green") greenDucks.push(blob);
+          else if(colorType==="orange") orangeDucks.push(blob);
+        }
+      }
+
+      for(let y=0; y<smallCanvas.height; y+=2){
+        for(let x=0; x<smallCanvas.width; x+=2){
+          const idx = y*smallCanvas.width + x;
+          if(!visited[idx]) floodFill(x,y);
+        }
+      }
+
+      return {greenDucks, orangeDucks};
+    }
+
+    function drawResults(detections){
+      ctx.drawImage(video,0,0,canvas.width,canvas.height);
+
+      detections.greenDucks.forEach(d=>{
+        ctx.beginPath();
+        ctx.arc(d.x*(canvas.width/smallCanvas.width), d.y*(canvas.height/smallCanvas.height), 20,0,2*Math.PI);
+        ctx.lineWidth=3;
+        ctx.strokeStyle="#00FF00";
+        ctx.stroke();
+      });
+
+      detections.orangeDucks.forEach(d=>{
+        ctx.beginPath();
+        ctx.arc(d.x*(canvas.width/smallCanvas.width), d.y*(canvas.height/smallCanvas.height), 20,0,2*Math.PI);
+        ctx.lineWidth=3;
+        ctx.strokeStyle="#FFA500";
+        ctx.stroke();
+      });
+
+      coordsText.textContent = `Green Ducks: ${detections.greenDucks.length} | Orange Ducks: ${detections.orangeDucks.length}`;
+    }
+
+    function processFrame(){
+      const detections = detectDucks();
+      drawResults(detections);
+      requestAnimationFrame(processFrame);
+    }
+
+    (async()=>{
       await initCamera();
-      await loadModel();
-      detectFrame();
+      processFrame();
     })();
   </script>
 </body>
-</html> -->
-
-
-
+</html>
