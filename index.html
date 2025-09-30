@@ -159,10 +159,12 @@
     body { margin:0; background:#111; color:#fff; font-family:sans-serif; text-align:center; }
     canvas { width:100%; max-width:480px; border-radius:12px; margin:10px 0; }
     #coords { font-size:1rem; margin-top:5px; }
+    #startBtn { padding:10px 20px; font-size:1.2rem; margin-top:20px; }
   </style>
 </head>
 <body>
   <h2>🦆 Green & Orange Duck Tracker</h2>
+  <button id="startBtn" style="display:none;">Start Camera</button>
   <canvas id="canvas"></canvas>
   <p id="coords">Green Ducks: – | Orange Ducks: –</p>
 
@@ -170,6 +172,7 @@
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
     const coordsText = document.getElementById("coords");
+    const startBtn = document.getElementById("startBtn");
 
     const video = document.createElement("video");
     video.autoplay = true;
@@ -177,22 +180,27 @@
     video.style.display = "none";
     document.body.appendChild(video);
 
-    // Offscreen canvas for downscaled detection
+    // Offscreen downscaled canvas for faster processing
     const smallCanvas = document.createElement("canvas");
     const smallCtx = smallCanvas.getContext("2d");
     smallCanvas.width = 160;
     smallCanvas.height = 120;
 
     async function initCamera() {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      video.srcObject = stream;
-      return new Promise(resolve => {
-        video.onloadedmetadata = () => {
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          resolve();
-        };
-      });
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        video.srcObject = stream;
+        return new Promise(resolve => {
+          video.onloadedmetadata = () => {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            resolve();
+          };
+        });
+      } catch (err) {
+        alert("Camera access denied or not available: " + err.message);
+        console.error(err);
+      }
     }
 
     function rgbToHsv(r, g, b) {
@@ -301,10 +309,23 @@
       requestAnimationFrame(processFrame);
     }
 
-    (async()=>{
-      await initCamera();
-      processFrame();
-    })();
+    // Safari detection
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
+    if (isSafari) {
+      startBtn.style.display = "inline-block";
+      startBtn.addEventListener("click", async () => {
+        await initCamera();
+        processFrame();
+        startBtn.style.display = "none";
+      });
+    } else {
+      (async()=>{
+        await initCamera();
+        processFrame();
+      })();
+    }
   </script>
 </body>
 </html>
+
