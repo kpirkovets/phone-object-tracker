@@ -1,331 +1,5 @@
-<!-- <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Real-Time Object Tracking</title>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
-  <style>
-    body { margin: 0; display: flex; flex-direction: column; align-items: center; background: #111; color: white; }
-    video, canvas { width: 100%; max-width: 480px; border-radius: 12px; }
-    #status { margin: 10px; font-size: 1rem; }
-  </style>
-</head>
-<body>
-  <h2>📷 Real-Time Object Tracking</h2>
-  <p id="status">Loading model...</p>
-  <video id="video" autoplay playsinline></video>
-  <canvas id="canvas"></canvas>
-
-  <script>
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const statusText = document.getElementById('status');
-
-    async function initCamera() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-        video.srcObject = stream;
-        return new Promise(resolve => {
-          video.onloadedmetadata = () => {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            resolve();
-          };
-        });
-      } catch (err) {
-        alert('Camera access denied or unavailable.');
-      }
-    }
-
-    async function main() {
-      await initCamera();
-      statusText.textContent = "Loading object detection model...";
-      const model = await cocoSsd.load();
-      statusText.textContent = "Model loaded. Detecting objects...";
-      
-      async function detectFrame() {
-        const predictions = await model.detect(video);
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        
-        predictions.forEach(pred => {
-          ctx.beginPath();
-          ctx.rect(...pred.bbox);
-          ctx.lineWidth = 2;
-          ctx.strokeStyle = "#00FF00";
-          ctx.fillStyle = "#00FF00";
-          ctx.stroke();
-          ctx.fillText(`${pred.class} (${Math.round(pred.score*100)}%)`, pred.bbox[0], pred.bbox[1] > 10 ? pred.bbox[1] - 5 : 10);
-        });
-
-        requestAnimationFrame(detectFrame);
-      }
-      
-      detectFrame();
-    }
-
-    main();
-  </script>
-</body>
-</html> -->
-
 
 <!-- <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Duck Tracker (Fast)</title>
-  <style>
-    body { margin: 0; background: #111; color: #fff; font-family: sans-serif; text-align: center; }
-    video, canvas { width: 100%; max-width: 480px; border-radius: 12px; margin: 10px 0; }
-  </style>
-</head>
-<body>
-  <h2>🦆 Bright Duck Tracker</h2>
-  <video id="video" autoplay playsinline></video>
-  <canvas id="canvas"></canvas>
-  <p id="coords">Coordinates: –</p>
-
-  <script>
-    const video = document.getElementById("video");
-    const canvas = document.getElementById("canvas");
-    const ctx = canvas.getContext("2d");
-    const coordsText = document.getElementById("coords");
-
-    async function initCamera() {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      video.srcObject = stream;
-      return new Promise(resolve => {
-        video.onloadedmetadata = () => {
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          resolve();
-        };
-      });
-    }
-
-    function inRange(h, s, v, lower, upper) {
-      return (
-        h >= lower[0] && h <= upper[0] &&
-        s >= lower[1] && s <= upper[1] &&
-        v >= lower[2] && v <= upper[2]
-      );
-    }
-
-    function rgbToHsv(r, g, b) {
-      r /= 255; g /= 255; b /= 255;
-      const max = Math.max(r, g, b), min = Math.min(r, g, b);
-      let h, s, v = max;
-      const d = max - min;
-      s = max === 0 ? 0 : d / max;
-      if (max === min) {
-        h = 0;
-      } else {
-        switch (max) {
-          case r: h = ((g - b) / d + (g < b ? 6 : 0)); break;
-          case g: h = ((b - r) / d + 2); break;
-          case b: h = ((r - g) / d + 4); break;
-        }
-        h /= 6;
-      }
-      return [h * 180, s * 255, v * 255]; // H:0–180, S:0–255, V:0–255
-    }
-
-    function processFrame() {
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = frame.data;
-
-      let sumX = 0, sumY = 0, count = 0;
-
-      for (let i = 0; i < data.length; i += 4 * 4) { // skip some pixels for speed
-        const r = data[i], g = data[i+1], b = data[i+2];
-        const [h, s, v] = rgbToHsv(r, g, b);
-
-        // Bright green
-        const isGreen = inRange(h, s, v, [35, 100, 100], [85, 255, 255]);
-        // Bright orange
-        const isOrange = inRange(h, s, v, [5, 150, 150], [25, 255, 255]);
-
-        if (isGreen || isOrange) {
-          const pixelIndex = i / 4;
-          const x = pixelIndex % canvas.width;
-          const y = Math.floor(pixelIndex / canvas.width);
-          sumX += x;
-          sumY += y;
-          count++;
-        }
-      }
-
-      if (count > 200) { // only show if enough pixels detected
-        const cx = sumX / count;
-        const cy = sumY / count;
-        ctx.beginPath();
-        ctx.arc(cx, cy, 20, 0, 2 * Math.PI);
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = "#00FF00";
-        ctx.stroke();
-        coordsText.textContent = `Coordinates: (${cx.toFixed(0)}, ${cy.toFixed(0)})`;
-      } else {
-        coordsText.textContent = "Coordinates: –";
-      }
-
-      requestAnimationFrame(processFrame);
-    }
-
-    (async () => {
-      await initCamera();
-      processFrame();
-    })();
-  </script>
-</body>
-</html> -->
-
-
-
-<!-- <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Multi Duck Tracker</title>
-  <style>
-    body { margin: 0; background: #111; color: #fff; font-family: sans-serif; text-align: center; }
-    video, canvas { width: 100%; max-width: 480px; border-radius: 12px; margin: 10px 0; }
-  </style>
-</head>
-<body>
-  <h2>🦆 Multi Duck Tracker</h2>
-  <video id="video" autoplay playsinline></video>
-  <canvas id="canvas"></canvas>
-  <p id="coords">Detections: –</p>
-
-  <script>
-    const video = document.getElementById("video");
-    const canvas = document.getElementById("canvas");
-    const ctx = canvas.getContext("2d");
-    const coordsText = document.getElementById("coords");
-
-    async function initCamera() {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      video.srcObject = stream;
-      return new Promise(resolve => {
-        video.onloadedmetadata = () => {
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          resolve();
-        };
-      });
-    }
-
-    function inRange(h, s, v, lower, upper) {
-      return (
-        h >= lower[0] && h <= upper[0] &&
-        s >= lower[1] && s <= upper[1] &&
-        v >= lower[2] && v <= upper[2]
-      );
-    }
-
-    function rgbToHsv(r, g, b) {
-      r /= 255; g /= 255; b /= 255;
-      const max = Math.max(r, g, b), min = Math.min(r, g, b);
-      let h, s, v = max;
-      const d = max - min;
-      s = max === 0 ? 0 : d / max;
-      if (max === min) {
-        h = 0;
-      } else {
-        switch (max) {
-          case r: h = ((g - b) / d + (g < b ? 6 : 0)); break;
-          case g: h = ((b - r) / d + 2); break;
-          case b: h = ((r - g) / d + 4); break;
-        }
-        h /= 6;
-      }
-      return [h * 180, s * 255, v * 255]; // H:0–180, S:0–255, V:0–255
-    }
-
-    function processFrame() {
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = frame.data;
-
-      let detections = [];
-      let visited = new Uint8Array(canvas.width * canvas.height);
-
-      function floodFill(startX, startY, idx) {
-        let queue = [[startX, startY]];
-        let sumX = 0, sumY = 0, count = 0;
-
-        while (queue.length > 0) {
-          let [x, y] = queue.pop();
-          if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) continue;
-          let index = y * canvas.width + x;
-          if (visited[index]) continue;
-
-          const i = index * 4;
-          const r = data[i], g = data[i+1], b = data[i+2];
-          const [h, s, v] = rgbToHsv(r, g, b);
-
-          const isGreen = inRange(h, s, v, [35, 100, 100], [85, 255, 255]);
-          const isOrange = inRange(h, s, v, [5, 150, 150], [25, 255, 255]);
-
-          if (isGreen || isOrange) {
-            visited[index] = 1;
-            sumX += x;
-            sumY += y;
-            count++;
-
-            // Explore neighbors
-            queue.push([x+1, y]);
-            queue.push([x-1, y]);
-            queue.push([x, y+1]);
-            queue.push([x, y-1]);
-          }
-        }
-        if (count > 200) { // ignore noise
-          detections.push({ x: sumX / count, y: sumY / count, count });
-        }
-      }
-
-      for (let y = 0; y < canvas.height; y += 4) {
-        for (let x = 0; x < canvas.width; x += 4) {
-          let idx = y * canvas.width + x;
-          if (!visited[idx]) {
-            floodFill(x, y, idx);
-          }
-        }
-      }
-
-      // Draw detections
-      detections.forEach(det => {
-        ctx.beginPath();
-        ctx.arc(det.x, det.y, 20, 0, 2 * Math.PI);
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = "#00FF00";
-        ctx.stroke();
-      });
-
-      coordsText.textContent = `Detections: ${detections.length}`;
-      requestAnimationFrame(processFrame);
-    }
-
-    (async () => {
-      await initCamera();
-      processFrame();
-    })();
-  </script>
-</body>
-</html>
-
- -->
-
-
-
-<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -470,6 +144,104 @@
     (async () => {
       await initCamera();
       processFrame();
+    })();
+  </script>
+</body>
+</html> -->
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YOLO Duck Tracker</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js"></script>
+  <style>
+    body { margin:0; background:#111; color:#fff; font-family:sans-serif; text-align:center; }
+    canvas { width:100%; max-width:480px; border-radius:12px; margin:10px 0; }
+    #counts { font-size:1rem; margin-top:5px; }
+  </style>
+</head>
+<body>
+  <h2>🦆 YOLO Duck Tracker</h2>
+  <canvas id="canvas"></canvas>
+  <p id="counts">Green Ducks: – | Orange Ducks: –</p>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const countsText = document.getElementById('counts');
+
+    const video = document.createElement('video');
+    video.autoplay = true;
+    video.playsInline = true;
+    video.style.display = 'none';
+    document.body.appendChild(video);
+
+    let model;
+
+    async function initCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      video.srcObject = stream;
+      return new Promise(resolve => {
+        video.onloadedmetadata = () => {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          resolve();
+        };
+      });
+    }
+
+    async function loadModel() {
+      // Replace with your hosted YOLOv8 TFJS model URL
+      model = await tf.loadGraphModel('https://your-server.com/model/model.json');
+      console.log('Model loaded!');
+    }
+
+    async function detectFrame() {
+      tf.engine().startScope();
+      const inputTensor = tf.browser.fromPixels(video).resizeBilinear([640,640]).div(255.0).expandDims(0);
+      const predictions = await model.executeAsync(inputTensor);
+      
+      // predictions processing depends on exported model format
+      // usually: boxes, scores, class indices
+      // for example (pseudo-code):
+      // const boxes = predictions[0].arraySync();
+      // const scores = predictions[1].arraySync();
+      // const classes = predictions[2].arraySync();
+
+      // Example placeholder code:
+      const greenDucks = []; // fill with predictions where class == 'green_duck'
+      const orangeDucks = []; // fill with predictions where class == 'orange_duck'
+
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // Draw green boxes
+      greenDucks.forEach(box => {
+        ctx.strokeStyle = '#00FF00';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(box[0], box[1], box[2]-box[0], box[3]-box[1]);
+      });
+
+      // Draw orange boxes
+      orangeDucks.forEach(box => {
+        ctx.strokeStyle = '#FFA500';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(box[0], box[1], box[2]-box[0], box[3]-box[1]);
+      });
+
+      countsText.textContent = `Green Ducks: ${greenDucks.length} | Orange Ducks: ${orangeDucks.length}`;
+
+      tf.engine().endScope();
+      requestAnimationFrame(detectFrame);
+    }
+
+    (async () => {
+      await initCamera();
+      await loadModel();
+      detectFrame();
     })();
   </script>
 </body>
