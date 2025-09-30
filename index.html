@@ -186,7 +186,7 @@
 
 
 
-<!DOCTYPE html>
+<!-- <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -321,4 +321,157 @@
 </body>
 </html>
 
+ -->
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Green & Orange Duck Tracker</title>
+  <style>
+    body { margin: 0; background: #111; color: #fff; font-family: sans-serif; text-align: center; }
+    canvas { width: 100%; max-width: 480px; border-radius: 12px; margin: 10px 0; }
+    #coords { font-size: 1rem; margin-top: 5px; }
+  </style>
+</head>
+<body>
+  <h2>🦆 Green & Orange Duck Tracker</h2>
+  <canvas id="canvas"></canvas>
+  <p id="coords">Green Ducks: – | Orange Ducks: –</p>
+
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const coordsText = document.getElementById("coords");
+
+    const video = document.createElement("video");
+    video.autoplay = true;
+    video.playsInline = true;
+    video.style.display = "none";
+    document.body.appendChild(video);
+
+    async function initCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      video.srcObject = stream;
+      return new Promise(resolve => {
+        video.onloadedmetadata = () => {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          resolve();
+        };
+      });
+    }
+
+    function rgbToHsv(r, g, b) {
+      r /= 255; g /= 255; b /= 255;
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      let h, s, v = max;
+      const d = max - min;
+      s = max === 0 ? 0 : d / max;
+      if (max === min) h = 0;
+      else {
+        switch(max) {
+          case r: h = ((g - b) / d + (g < b ? 6 : 0)); break;
+          case g: h = ((b - r) / d + 2); break;
+          case b: h = ((r - g) / d + 4); break;
+        }
+        h /= 6;
+      }
+      return [h * 180, s * 255, v * 255];
+    }
+
+    function inRange(h, s, v, lower, upper) {
+      return h >= lower[0] && h <= upper[0] &&
+             s >= lower[1] && s <= upper[1] &&
+             v >= lower[2] && v <= upper[2];
+    }
+
+    function processFrame() {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = frame.data;
+
+      let greenDucks = [];
+      let orangeDucks = [];
+      let visited = new Uint8Array(canvas.width * canvas.height);
+
+      function floodFill(startX, startY) {
+        let queue = [[startX, startY]];
+        let sumX = 0, sumY = 0, count = 0;
+        let colorType = null; // "green" or "orange"
+
+        while(queue.length > 0) {
+          let [x, y] = queue.pop();
+          if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) continue;
+          let index = y * canvas.width + x;
+          if (visited[index]) continue;
+
+          const i = index * 4;
+          const r = data[i], g = data[i+1], b = data[i+2];
+          const [h, s, v] = rgbToHsv(r, g, b);
+
+          const isGreen = inRange(h, s, v, [35, 100, 100], [85, 255, 255]);
+          const isOrange = inRange(h, s, v, [5, 150, 150], [25, 255, 255]);
+
+          if (isGreen || isOrange) {
+            visited[index] = 1;
+            sumX += x;
+            sumY += y;
+            count++;
+            if (!colorType) colorType = isGreen ? "green" : "orange";
+
+            // Explore neighbors
+            queue.push([x+1, y]);
+            queue.push([x-1, y]);
+            queue.push([x, y+1]);
+            queue.push([x, y-1]);
+          }
+        }
+
+        if (count > 200) {
+          const blob = { x: sumX / count, y: sumY / count };
+          if (colorType === "green") greenDucks.push(blob);
+          else if (colorType === "orange") orangeDucks.push(blob);
+        }
+      }
+
+      for(let y = 0; y < canvas.height; y += 4) {
+        for(let x = 0; x < canvas.width; x += 4) {
+          const idx = y * canvas.width + x;
+          if (!visited[idx]) floodFill(x, y);
+        }
+      }
+
+      // Draw green ducks
+      greenDucks.forEach(d => {
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, 20, 0, 2 * Math.PI);
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "#00FF00";
+        ctx.stroke();
+      });
+
+      // Draw orange ducks
+      orangeDucks.forEach(d => {
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, 20, 0, 2 * Math.PI);
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "#FFA500";
+        ctx.stroke();
+      });
+
+      coordsText.textContent = `Green Ducks: ${greenDucks.length} | Orange Ducks: ${orangeDucks.length}`;
+      requestAnimationFrame(processFrame);
+    }
+
+    (async () => {
+      await initCamera();
+      processFrame();
+    })();
+  </script>
+</body>
+</html>
 
