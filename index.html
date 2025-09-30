@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!-- <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -69,4 +69,106 @@
     main();
   </script>
 </body>
+</html> -->
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Duck Tracker</title>
+  <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+  <style>
+    body { margin: 0; background: #111; color: #fff; text-align: center; font-family: sans-serif; }
+    video, canvas { width: 100%; max-width: 480px; border-radius: 12px; margin: 10px 0; }
+    #status { margin: 10px; }
+  </style>
+</head>
+<body>
+  <h2>🦆 Bright Duck Tracker</h2>
+  <p id="status">Loading OpenCV...</p>
+  <video id="video" autoplay playsinline></video>
+  <canvas id="canvas"></canvas>
+
+  <script>
+    let video = document.getElementById('video');
+    let canvas = document.getElementById('canvas');
+    let ctx = canvas.getContext('2d');
+    let statusText = document.getElementById('status');
+
+    function onOpenCvReady() {
+      statusText.textContent = "OpenCV.js Loaded!";
+      initCamera();
+    }
+
+    async function initCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      video.srcObject = stream;
+      video.onloadedmetadata = () => {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        startProcessing();
+      };
+    }
+
+    function startProcessing() {
+      let src = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC4);
+      let hsv = new cv.Mat();
+      let mask = new cv.Mat();
+      let contours = new cv.MatVector();
+      let hierarchy = new cv.Mat();
+
+      // HSV ranges for bright green & orange
+      // Adjust if lighting differs
+      let lowerGreen = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC3, [35, 100, 100, 0]); // HSV lower bound
+      let upperGreen = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC3, [85, 255, 255, 255]); // HSV upper bound
+      let lowerOrange = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC3, [5, 150, 150, 0]);
+      let upperOrange = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC3, [20, 255, 255, 255]);
+
+      function processFrame() {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        src.data.set(imageData.data);
+
+        cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
+        cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
+
+        // Green mask
+        let maskGreen = new cv.Mat();
+        cv.inRange(hsv, lowerGreen, upperGreen, maskGreen);
+
+        // Orange mask
+        let maskOrange = new cv.Mat();
+        cv.inRange(hsv, lowerOrange, upperOrange, maskOrange);
+
+        // Combine masks
+        cv.add(maskGreen, maskOrange, mask);
+
+        // Find contours
+        cv.findContours(mask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+        for (let i = 0; i < contours.size(); i++) {
+          let cnt = contours.get(i);
+          let rect = cv.boundingRect(cnt);
+
+          // Filter out small blobs
+          if (rect.width * rect.height > 500) {
+            ctx.strokeStyle = "#00FF00";
+            ctx.lineWidth = 3;
+            ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+
+            ctx.fillStyle = "#fff";
+            ctx.fillText("Duck", rect.x, rect.y > 10 ? rect.y - 5 : 10);
+          }
+        }
+
+        requestAnimationFrame(processFrame);
+      }
+
+      requestAnimationFrame(processFrame);
+    }
+  </script>
+</body>
 </html>
+
